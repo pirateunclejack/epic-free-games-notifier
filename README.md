@@ -64,35 +64,6 @@ The `check_free_games.py` script performs the following steps:
 1. **Fetch Free Games**: The script fetches the list of free games from the Epic Games Store. (Free games, yay! 🥳)
 2. **Send Email Notification**: If free games are found, the script sends an email notification with the details of the free games. (Your inbox will thank you! 📬)
 
-### Example Code Snippet
-```python
-try:
-    logging.info("Connecting to SMTP server...")
-    with smtplib.SMTP(SMTP_SERVER, int(SMTP_PORT)) as server:
-        server.set_debuglevel(1)  # Enable debug logs
-        server.starttls()
-        logging.info("Logging in to SMTP server...")
-        server.login(EMAIL, PASSWORD)
-        logging.info("Sending email...")
-        server.send_message(msg)
-        logging.info("Email sent successfully.")
-except Exception as e:
-    logging.error(f"Failed to send email: {e}")
-
-def main():
-    """Main function to fetch games and send notifications."""
-    logging.info("Fetching free games...")
-    free_games = fetch_free_games()
-    if free_games:
-        logging.info("Free games found! Sending notification...")
-        send_email(free_games)
-    else:
-        logging.info("No free games available at the moment.")
-
-if __name__ == "__main__":
-    main()
-```
-
 ## Screenshot
 Here is an example of the email you will receive (yes, it looks this good!):
 ![Email Screenshot](assets/Screenshot_20250103-025754.png)
