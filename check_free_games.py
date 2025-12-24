@@ -18,6 +18,7 @@ logging.basicConfig(
 )
 
 SMTP_SERVER = os.getenv("SMTP_SERVER")
+SMTP_PORT = os.getenv("SMTP_PORT")
 EMAIL = os.getenv("EMAIL")  # This is your SMTP login email
 PASSWORD = os.getenv("PASSWORD")
 TO_EMAIL = os.getenv("TO_EMAIL")
@@ -30,6 +31,7 @@ def check_env_variables():
     """Check if all required environment variables are set."""
     required_vars = {
         "SMTP_SERVER": os.getenv("SMTP_SERVER"),
+        "SMTP_PORT": os.getenv("SMTP_PORT"),
         "EMAIL": os.getenv("EMAIL"),
         "PASSWORD": os.getenv("PASSWORD"),
         "TO_EMAIL": os.getenv("TO_EMAIL"),
@@ -40,6 +42,12 @@ def check_env_variables():
     
     if missing_vars:
         raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
+
+    # Validate SMTP_PORT is a valid integer
+    try:
+        int(required_vars["SMTP_PORT"])
+    except ValueError:
+        raise ValueError(f"SMTP_PORT must be a valid number, got: {required_vars['SMTP_PORT']}")
 
 
 def format_date(date_string):
@@ -110,7 +118,7 @@ def send_email(free_games):
         return False  # Changed to return False instead of None
 
     # ssl login
-    smtp = SMTP_SSL(SMTP_SERVER)
+    smtp = SMTP_SSL(SMTP_SERVER, int(SMTP_PORT))
     # set_debuglevel() for debug, 1 enable debug, 0 for disable
     # smtp.set_debuglevel(1)
 
@@ -294,6 +302,7 @@ def manage_notification_history(games, history_file="notification_history.json",
     except Exception as e:
         logging.error(f"Error managing notification history: {e}")
         return games  # Return all games if there's an error
+
 
 def _is_old_notification(game_id, current_time):
     """Check if a notification is older than 30 days."""
