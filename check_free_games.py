@@ -1,12 +1,11 @@
 import datetime
 import logging
 import os
-import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import json
 from pathlib import Path
-
+from smtplib import SMTP_SSL
 import requests
 from dotenv import load_dotenv
 
@@ -43,7 +42,7 @@ def check_env_variables():
     
     if missing_vars:
         raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
-    
+
     # Validate SMTP_PORT is a valid integer
     try:
         int(required_vars["SMTP_PORT"])
@@ -83,31 +82,17 @@ def fetch_free_games():
     for game in games:
         if not game.get("promotions"):
             continue
+        discounted_price = game.get("price", {}).get("totalPrice", {}).get(
+            "discountPrice", 0
+        )
+        if discounted_price != 0:
+            continue
 
         for promo in game["promotions"].get("promotionalOffers", []):
             for offer in promo.get("promotionalOffers", []):
-                # Check if the game is free (no price or marked as "free")
-                discounted_price = (
-                    game.get("price", {}).get("totalPrice", {}).get("discountPrice", 0)
-                )
-
-                # Check if it's free
-                if discounted_price != 0:
-                    continue
 
                 # Extracting the correct urlSlug from catalogNs.mappings
-                url_slug = next(
-                    (
-                        mapping.get("pageSlug")
-                        for mapping in game.get("catalogNs", {}).get("mappings", [])
-                        if mapping.get("pageSlug")
-                    ),
-                    None,
-                )
-
-                # Ensure url_slug is not None
-                if not url_slug:
-                    continue
+                product_slug = game.get("productSlug", 0)
 
                 free_games.append(
                     {
@@ -118,7 +103,7 @@ def fetch_free_games():
                         "original_price": "Free",
                         "discounted_price": "Free",
                         "image_url": game.get("keyImages", [{}])[0].get("url", ""),
-                        "url": f"https://store.epicgames.com/en-US/p/{url_slug}",
+                        "url": f"https://store.epicgames.com/en-US/p/{product_slug}",
                         "start_date": offer.get("startDate"),
                         "end_date": offer.get("endDate"),
                     }
@@ -132,9 +117,19 @@ def send_email(free_games):
         logging.info("No free games to notify.")
         return False  # Changed to return False instead of None
 
+    # ssl login
+    smtp = SMTP_SSL(SMTP_SERVER, int(SMTP_PORT))
+    # set_debuglevel() for debug, 1 enable debug, 0 for disable
+    # smtp.set_debuglevel(1)
+
+    logging.info("Sending ehlo ...")
+    smtp.ehlo(SMTP_SERVER)
+
+    logging.info("Logging in email ...")
+    smtp.login(EMAIL, PASSWORD)
+
     subject = "Free Games on Epic Games Store!"
 
-    # Modern, professional, and responsive email body with a border
     body = """
     <html>
     <head>
@@ -258,18 +253,12 @@ def send_email(free_games):
     msg["To"] = TO_EMAIL
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "html"))
-
+    
     try:
-        logging.info("Connecting to SMTP server...")
-        with smtplib.SMTP(SMTP_SERVER, int(SMTP_PORT)) as server:
-            server.set_debuglevel(1)  # Enable debug logs
-            server.starttls()
-            logging.info("Logging in to SMTP server...")
-            server.login(EMAIL, PASSWORD)
-            logging.info("Sending email...")
-            server.send_message(msg)
-            logging.info("Email sent successfully.")
-            return True  # Return True on successful send
+        logging.info("Sending email ...")
+        smtp.sendmail(EMAIL, TO_EMAIL, msg.as_string())
+        smtp.quit()
+
     except Exception as e:
         logging.error(f"Failed to send email: {e}")
         return False  # Return False if sending fails
@@ -314,6 +303,7 @@ def manage_notification_history(games, history_file="notification_history.json",
         logging.error(f"Error managing notification history: {e}")
         return games  # Return all games if there's an error
 
+
 def _is_old_notification(game_id, current_time):
     """Check if a notification is older than 30 days."""
     try:
@@ -330,7 +320,7 @@ def main():
     try:
         # Check environment variables first
         check_env_variables()
-        
+
         logging.info("Fetching free games...")
         free_games = fetch_free_games()
         if free_games:
@@ -338,12 +328,14 @@ def main():
             new_games = manage_notification_history(free_games, update_history=False)
             if new_games:
                 logging.info(f"Found {len(new_games)} new free games! Sending notification...")
-                if send_email(new_games):
-                    # Only update history if email was sent successfully
-                    manage_notification_history(new_games)
-                    logging.info("Notification history updated.")
-                else:
-                    logging.warning("Email failed to send, notification history not updated.")
+                try:
+                    send_email(new_games)
+                except Exception as e:
+                    logging.error(f"Error sending email: {e}")
+
+                manage_notification_history(new_games)
+                logging.info("Notification history updated.")            
+
             else:
                 logging.info("No new free games to notify about.")
         else:
